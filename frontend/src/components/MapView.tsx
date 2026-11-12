@@ -211,6 +211,8 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
     };
     map.on("moveend", markAway);
     mapRef.current = map;
+    // ?demo in the URL exposes the map, so the recorded walkthrough can point at checkpoints.
+    if (new URLSearchParams(window.location.search).has("demo")) (window as unknown as { __map?: MapLibreMap }).__map = map;
 
     map.on("load", () => {
       tintBasemap(map);
