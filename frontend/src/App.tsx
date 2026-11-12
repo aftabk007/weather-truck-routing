@@ -35,7 +35,7 @@ export default function App() {
   const [showHeat, setShowHeat] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [focus, setFocus] = useState<LngLat | null>(null);
-  const [fitKey, setFitKey] = useState(0);
+  const [fit, setFit] = useState<{ key: number; mode: "all" | "selected" }>({ key: 0, mode: "all" });
 
   const submit = useCallback(async (req: PlanRequest) => {
     setBusy(true);
@@ -102,6 +102,25 @@ export default function App() {
 
   const sel = plan?.routes.find((r) => r.id === selected) ?? null;
 
+  // Slider hour of the departure (clamped to the 48-h forecast).
+  const depHour = useMemo(() => {
+    if (!plan || !heat) return 0;
+    const h = Math.round((Date.parse(plan.departure) - Date.parse(heat.start)) / 3600_000);
+    return Math.min(Math.max(h, 0), heat.hours - 1);
+  }, [plan, heat]);
+
+  // Picking a route starts it over: stop playback, back to departure (the truck
+  // snaps to the start), and zoom to that route.
+  const selectRoute = useCallback(
+    (id: string) => {
+      setSelected(id);
+      setPlaying(false);
+      setHour(depHour);
+      setFit((f) => ({ key: f.key + 1, mode: "selected" }));
+    },
+    [depHour],
+  );
+
   // Route data for the smooth truck animation on the map.
   const drive = useMemo<Drive | null>(() => {
     const route = plan?.routes.find((r) => r.id === selected);
@@ -155,7 +174,7 @@ export default function App() {
           </div>
         )}
         {plan ? (
-          <RouteCards plan={plan} selected={selected} onSelect={setSelected} onCheckpoint={(lng, lat) => setFocus([lng, lat])} />
+          <RouteCards plan={plan} selected={selected} onSelect={selectRoute} onCheckpoint={(lng, lat) => setFocus([lng, lat])} />
         ) : (
           !busy && <Examples onPick={(values) => setSeed((s) => ({ key: s.key + 1, values, auto: true }))} />
         )}
@@ -172,7 +191,7 @@ export default function App() {
             lines={lines}
             heat={heat}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={selectRoute}
             hour={hour}
             heatVar={heatVar}
             showHeat={showHeat}
@@ -185,7 +204,7 @@ export default function App() {
               setPlaying(false);
               setHour(h);
             }}
-            fitKey={fitKey}
+            fit={fit}
           />
         </Suspense>
 
@@ -206,7 +225,7 @@ export default function App() {
               className="fit-all"
               onClick={() => {
                 setPlaying(false);
-                setFitKey((k) => k + 1);
+                setFit((f) => ({ key: f.key + 1, mode: "all" }));
               }}
               title="Zoom out to show all routes"
             >

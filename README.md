@@ -39,7 +39,8 @@ React ──POST /api/heatmap (route corridor)──▶ Django: grid around the 
 | Miles per level | Each checkpoint stands for the route miles closest to it (half the gap to each neighbour), so the miles of all checkpoints add up to the route length, at any interval. |
 | Recommendation | Sorted by a key: **No Travel miles**, then the brief's order: Severe miles, High miles, average risk (mile-weighted, 0–4), travel time. No Travel comes first because the brief's list starts at Severe, but a route through No Travel weather cannot be driven, so it must never beat a route that is only Severe. Miles are rounded to 0.1 so float noise cannot decide. The UI shows which rule decided, e.g. "Severe miles: 0.0 mi vs 12.0 mi on Route B." |
 | Forecast range | Departure must be within 5 days; checkpoints past the 8-day forecast are marked "No forecast" and shown as hatched miles. |
-| Heatmap slider | Hour 0 is the current hour; the slider starts at the departure hour, and a 🚚 marker shows where the truck is on the selected route at that hour. |
+| Forecast slider | 0–48 h from now, as the brief asks: it is the heatmap's forecast over the corridor, so it does not stop at arrival. The trip is shaded on it. ▶ plays the trip from departure to arrival with one clock for truck, camera, slider and weather: 1 s per hour of driving; the 30-min break and the 10-h rest stand still and fast-forward (pink pulse). Drag past arrival to see later weather. |
+| Map | The camera follows the truck while playing (drag to look around, ⌖ to come back). ⌖ turns pink when the selected route is off screen. Picking another route stops playback and starts that route from departure. |
 
 ## Performance
 

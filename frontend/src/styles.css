@@ -307,3 +307,9 @@ b, strong { font-weight: 700; }
 /* Resting truck: a soft pink pulse while the clock fast-forwards */
 .truck[data-state="rest"] svg, .truck[data-state="break"] svg { animation: rest-pulse 0.9s ease-in-out infinite; }
 @keyframes rest-pulse { 50% { filter: drop-shadow(0 0 7px rgba(255, 61, 139, 0.95)); } }
+
+/* Re-centre control: navy icon, pink when the route is out of view */
+.maplibregl-ctrl-group .recenter { display: grid; place-items: center; color: var(--ink); }
+.maplibregl-ctrl-group .recenter.away { background: var(--pink); color: var(--white); animation: away-pop 0.25s ease-out; }
+.maplibregl-ctrl-group .recenter.away:hover { background: var(--pink-hover); }
+@keyframes away-pop { from { transform: scale(0.8); } }

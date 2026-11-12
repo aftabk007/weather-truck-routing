@@ -1,6 +1,7 @@
 import type { ExpressionSpecification } from "@maplibre/maplibre-gl-style-spec";
 import {
   AttributionControl,
+  type IControl,
   type GeoJSONSource,
   Map as MapLibreMap,
   type MapLayerMouseEvent,
@@ -94,6 +95,29 @@ const REST_MS_PER_HOUR = 150; // breaks and rests fast-forward: a 10-h rest take
 const GLIDE_MS_PER_HOUR = 90; // paused: how fast the truck glides to a new slider hour
 const FOLLOW_IN_MS = 800; // zoom-in when following starts
 
+/** Map control: a ⌖ button under the zoom buttons. Lights up pink when the
+ * selected route is out of view; brings you back to it (or to the truck while playing). */
+class RecenterControl implements IControl {
+  button = document.createElement("button");
+  private box = document.createElement("div");
+  constructor(onClick: () => void) {
+    this.box.className = "maplibregl-ctrl maplibregl-ctrl-group recenter-ctrl";
+    this.button.type = "button";
+    this.button.className = "recenter";
+    this.button.title = "Back to the route";
+    this.button.setAttribute("aria-label", "Back to the route");
+    this.button.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.4" fill="currentColor"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+    this.button.addEventListener("click", onClick);
+    this.box.append(this.button);
+  }
+  onAdd() {
+    return this.box;
+  }
+  onRemove() {
+    this.box.remove();
+  }
+}
+
 type Props = {
   plan: Plan | null;
   lines: Record<string, LngLat[]>;
@@ -109,7 +133,7 @@ type Props = {
   follow: boolean; // true while the timeline plays: keep the truck in view
   onHour: (h: number) => void; // playback moved into a new forecast hour
   onEnd: (h: number) => void; // playback reached arrival
-  fitKey: number; // bump to zoom back out to all routes
+  fit: { key: number; mode: "all" | "selected" }; // bump key to zoom to all routes or the selected one
 };
 
 /** Paint for the heatmap circles at slider hour `h`. Only the property name
@@ -138,7 +162,7 @@ function riskGradient(plan: Plan, id: string): ExpressionSpecification | null {
   return expr as ExpressionSpecification;
 }
 
-export default function MapView({ plan, lines, heat, selected, onSelect, hour, heatVar, showHeat, drive, focus, ends, follow, fitKey, onHour, onEnd }: Props) {
+export default function MapView({ plan, lines, heat, selected, onSelect, hour, heatVar, showHeat, drive, focus, ends, follow, fit, onHour, onEnd }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const truckRef = useRef<Marker | null>(null);
@@ -149,13 +173,43 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
   const [ready, setReady] = useState(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
+  const refollow = useRef(false); // re-centre pressed while playing: blend back onto the truck
+  const recenterRef = useRef<RecenterControl | null>(null);
 
   // Create the map once, with empty sources and layers in drawing order.
   useEffect(() => {
     const map = new MapLibreMap({ container: box.current!, style: STYLE, center: [-96, 38], zoom: 3.6, attributionControl: false });
     map.addControl(new AttributionControl({ compact: true }), "bottom-right");
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
+    const recenter = new RecenterControl(() => {
+      if (followRef.current) {
+        userMoved.current = false;
+        refollow.current = true;
+      } else {
+        const line = linesRef.current[selectedRef.current];
+        if (line?.length) map.fitBounds(bounds(line), { padding: DOCK_PADDING, duration: 800 });
+      }
+    });
+    recenterRef.current = recenter;
+    map.addControl(recenter, "top-right");
     map.addControl(new ScaleControl({ unit: "imperial" }), "top-right");
+    // Pink re-centre button when the selected route is out of view (or the user left the truck).
+    const markAway = () => {
+      const line = linesRef.current[selectedRef.current];
+      if (!line?.length) return recenter.button.classList.remove("away");
+      // "In view" = some point of the actual road is on screen (a bounding box is too loose).
+      const v = map.getBounds();
+      const step = Math.max(1, Math.floor(line.length / 400));
+      let visible = false;
+      for (let i = 0; i < line.length && !visible; i += step) visible = v.contains(line[i]);
+      const tooSmall = map.getZoom() < 3;
+      recenter.button.classList.toggle("away", !visible || tooSmall || (following.current && userMoved.current));
+    };
+    map.on("moveend", markAway);
     mapRef.current = map;
 
     map.on("load", () => {
@@ -418,6 +472,7 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
       }
       const target = d.start + hourRef.current * 3600_000;
       let t = shown ?? target;
+      if (shownDrive && d !== shownDrive) t = target; // another route or a new plan: start there, no glide
       let state = truckAt(d.checkpoints, d.departure, d.rest, t).state;
 
       if (followRef.current) {
@@ -484,6 +539,10 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
       }
       if (userMoved.current) return;
       following.current = true;
+      if (refollow.current) {
+        refollow.current = false;
+        followFrom = null; // blend back onto the truck
+      }
       if (!followFrom) {
         const c = map.getCenter();
         followFrom = { at: now, center: [c.lng, c.lat], zoom: map.getZoom() };
@@ -501,13 +560,13 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
     return () => cancelAnimationFrame(raf);
   }, [ready]);
 
-  // "All routes": zoom back out to the whole trip.
+  // Zoom to all routes ("All routes") or to the selected one (after picking a route).
   useEffect(() => {
     const map = mapRef.current;
-    if (!ready || !map || fitKey === 0) return;
-    const all = Object.values(lines).flat();
-    if (all.length) map.fitBounds(bounds(all), { padding: DOCK_PADDING, duration: 800 });
-  }, [ready, fitKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!ready || !map || fit.key === 0) return;
+    const pts = fit.mode === "selected" ? (lines[selected] ?? []) : Object.values(lines).flat();
+    if (pts.length) map.fitBounds(bounds(pts), { padding: DOCK_PADDING, duration: 800 });
+  }, [ready, fit.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (ready && focus) mapRef.current?.flyTo({ center: focus, zoom: Math.max(mapRef.current.getZoom(), 8), duration: 600 });
