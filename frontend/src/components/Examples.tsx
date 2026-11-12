@@ -53,8 +53,10 @@ export function Examples({ onPick }: { onPick: (v: TripValues) => void }) {
       <div className="section-title">Try an example</div>
       {EXAMPLES.map((e) => (
         <button key={e.title} type="button" className="example" onClick={() => onPick(e.values())}>
-          <b>{e.title}</b>
-          <span>{e.note}</span>
+          <div>
+            <b>{e.title}</b>
+            <span>{e.note}</span>
+          </div>
         </button>
       ))}
       <p className="hint">

@@ -58,7 +58,7 @@ export function RouteCards({ plan, selected, onSelect, onCheckpoint }: Props) {
         <div className="hero-head">
           <span className="letter big">{best.id}</span>
           <div>
-            <div className="eyebrow">Recommended route</div>
+            <div className="eyebrow">Recommended</div>
             <div className="hero-via">via {best.via.join(" · ") || "local roads"}</div>
           </div>
           <LevelPill level={best.summary.worst_level} />
@@ -78,7 +78,7 @@ export function RouteCards({ plan, selected, onSelect, onCheckpoint }: Props) {
           </div>
         </div>
         <p className="why">
-          <span>Why</span> {plan.reason}
+          <span>why:</span> {plan.reason}
         </p>
         <p className="truck-line">
           Routed for a {t.label.toLowerCase()} · {feetInches(t.height_ft)} × {feetInches(t.width_ft)} × {t.length_ft} ft ·{" "}

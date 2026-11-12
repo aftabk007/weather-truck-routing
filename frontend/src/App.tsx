@@ -13,11 +13,10 @@ const MapView = lazy(() => import("./components/MapView"));
 function Logo() {
   return (
     <svg className="logo" viewBox="0 0 32 32" aria-hidden>
-      <rect width="32" height="32" rx="8" fill="#13233d" />
-      <path d="M6 23c5 0 5-9 10-9s5 7 10 7" fill="none" stroke="#4dabf7" strokeWidth="2.6" strokeLinecap="round" />
-      <circle cx="6" cy="23" r="2.4" fill="#40c057" />
-      <circle cx="26" cy="21" r="2.4" fill="#fa5252" />
-      <path d="M17 6.5a3.4 3.4 0 0 1 6.5 1.2h.4a2.3 2.3 0 0 1 0 4.6H15.6a2.6 2.6 0 0 1-.3-5.2 3.4 3.4 0 0 1 1.7-.6Z" fill="#c5d4ea" />
+      <rect width="32" height="32" rx="9" fill="#ffffff" />
+      <path d="M7 22c4.5 0 4.5-8 9-8s4.5 6 9 6" fill="none" stroke="#0f1b3d" strokeWidth="2.8" strokeLinecap="round" />
+      <circle cx="7" cy="22" r="2.6" fill="#0f1b3d" />
+      <circle cx="25" cy="20" r="2.6" fill="#ff3d8b" />
     </svg>
   );
 }
@@ -103,11 +102,20 @@ export default function App() {
     <div className="app">
       <aside className="panel">
         <header className="brand">
-          <Logo />
-          <div>
-            <h1>Weather-Aware Truck Routing</h1>
-            <p>Three truck routes · weather at each ETA · the safest pick</p>
+          <div className="brand-row">
+            <Logo />
+            <span className="brand-name">Weather-Aware Truck Routing</span>
+            <a className="gh" href="https://github.com/aftabk007/weather-truck-routing" target="_blank" rel="noreferrer">
+              GitHub
+            </a>
           </div>
+          <span className="badge-new">
+            <i>New</i> Truck sizes · low bridges avoided
+          </span>
+          <h1>
+            Find the <em>safest</em> route.
+          </h1>
+          <p>Three truck routes, the weather at the hour you reach each stretch, and one clear pick.</p>
         </header>
 
         <TripForm key={seed.key} initial={seed.values} autoSubmit={seed.auto} busy={busy} onSubmit={submit} />

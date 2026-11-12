@@ -3,8 +3,8 @@ import type { LevelName } from "./api";
 export const LEVELS: LevelName[] = ["Low", "Moderate", "High", "Severe", "No Travel"];
 
 /** One colour per risk level, tuned to stand out on the dark map and panels. */
-export const LEVEL_COLORS = ["#40c057", "#fcc419", "#ff922b", "#fa5252", "#cc5de8"];
-export const NO_DATA_COLOR = "#5c6b80";
+export const LEVEL_COLORS = ["#22c55e", "#facc15", "#fb923c", "#ef4444", "#a855f7"];
+export const NO_DATA_COLOR = "#94a3b8";
 
 export const levelColor = (level: number | null) => (level == null ? NO_DATA_COLOR : LEVEL_COLORS[level]);
 
@@ -22,11 +22,11 @@ export const HEAT: Record<HeatVariable, { label: string; unit: string; stops: [n
     label: "Wind",
     unit: "mph",
     stops: [
-      [0, "#40c057"],
-      [25, "#fcc419"],
-      [35, "#ff922b"],
-      [45, "#fa5252"],
-      [55, "#cc5de8"],
+      [0, "#22c55e"],
+      [25, "#facc15"],
+      [35, "#fb923c"],
+      [45, "#ef4444"],
+      [55, "#a855f7"],
     ],
   },
   rain: {

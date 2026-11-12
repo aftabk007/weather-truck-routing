@@ -22,7 +22,49 @@ import { fmtTime, HEAT, HEAT_FLOOR, type HeatVariable, levelColor } from "../ris
 setWorkerUrl(mapWorkerUrl);
 
 const STYLE = "https://tiles.openfreemap.org/styles/dark";
-const DOCK_PADDING = { top: 96, bottom: 190, left: 60, right: 70 };
+const DOCK_PADDING = { top: 96, bottom: 200, left: 60, right: 70 };
+
+/** Navy palette for the base map, so the map and the panel read as one surface. */
+const NAVY = {
+  background: "#0f1b3d",
+  water: "#0a1431",
+  land: "#132150",
+  green: "#13264d",
+  building: "#1a2a5c",
+  road: "#1c2b5a",
+  roadMajor: "#283d75",
+  boundary: "#4a5d96",
+  label: "#9eabd3",
+  halo: "#0f1b3d",
+};
+
+/** Recolour the base map's own layers by type and name (our layers are added afterwards). */
+function tintBasemap(map: MapLibreMap) {
+  for (const layer of map.getStyle().layers ?? []) {
+    const id = layer.id;
+    try {
+      if (layer.type === "background") map.setPaintProperty(id, "background-color", NAVY.background);
+      else if (layer.type === "fill")
+        map.setPaintProperty(
+          id,
+          "fill-color",
+          /water|ocean|lake|river/.test(id) ? NAVY.water : /park|wood|grass|forest|landcover/.test(id) ? NAVY.green : /building/.test(id) ? NAVY.building : NAVY.land,
+        );
+      else if (layer.type === "line")
+        map.setPaintProperty(
+          id,
+          "line-color",
+          /water|river|stream|canal/.test(id) ? NAVY.water : /boundary|admin/.test(id) ? NAVY.boundary : /motorway|trunk|primary|major/.test(id) ? NAVY.roadMajor : NAVY.road,
+        );
+      else if (layer.type === "symbol") {
+        map.setPaintProperty(id, "text-color", NAVY.label);
+        map.setPaintProperty(id, "text-halo-color", NAVY.halo);
+      }
+    } catch {
+      // Some layers use paint properties a plain colour cannot replace; leave those as they are.
+    }
+  }
+}
 const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 const HEAT_KEY: Record<HeatVariable, string> = { risk: "r", wind: "w", rain: "p", snow: "s" };
 
@@ -85,6 +127,7 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
     mapRef.current = map;
 
     map.on("load", () => {
+      tintBasemap(map);
       map.addSource("heat", { type: "geojson", data: EMPTY });
       map.addSource("routes", { type: "geojson", data: EMPTY });
       map.addSource("selected", { type: "geojson", data: EMPTY, lineMetrics: true });
@@ -96,21 +139,21 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
         type: "line",
         source: "routes",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#8ea0bd", "line-width": 3.5, "line-opacity": 0.55 },
+        paint: { "line-color": "#8b9bd0", "line-width": 3.5, "line-opacity": 0.6 },
       });
       map.addLayer({
         id: "selected-glow",
         type: "line",
         source: "selected",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#4dabf7", "line-width": 18, "line-blur": 10, "line-opacity": 0.28 },
+        paint: { "line-color": "#ffffff", "line-width": 18, "line-blur": 10, "line-opacity": 0.16 },
       });
       map.addLayer({
         id: "selected-casing",
         type: "line",
         source: "selected",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#020617", "line-width": 9 },
+        paint: { "line-color": "#ffffff", "line-width": 9 },
       });
       map.addLayer({
         id: "selected",
@@ -126,7 +169,7 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
         paint: {
           "circle-color": ["get", "color"],
           "circle-radius": ["case", ["get", "sel"], 6, 3.5],
-          "circle-stroke-color": "#0b1220",
+          "circle-stroke-color": "#0f1b3d",
           "circle-stroke-width": ["case", ["get", "sel"], 2, 1],
           "circle-opacity": ["case", ["get", "sel"], 1, 0.7],
         },

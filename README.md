@@ -5,7 +5,7 @@ A React + Django app that helps a truck driver pick the safest route. You enter 
 - **Live app:** https://weather-truck-routing-tan.vercel.app
 
 ![Philadelphia → Boston: three truck routes, risk-coloured checkpoints, corridor weather heatmap and the 0–48 h forecast timeline](docs/screenshot.jpg)
-- **Stack:** Django 5 + Django REST Framework (API), React 19 + TypeScript + Vite (UI), MapLibre GL (map), dark "dispatch console" design
+- **Stack:** Django 5 + Django REST Framework (API), React 19 + TypeScript + Vite (UI), MapLibre GL (map), navy, white and hot-pink design
 - **Try it:** the example trips on the start screen (incl. a low-bridge demo in Durham, NC); ← / → move the forecast hour, space plays it
 - **Free data, no API keys:** [Valhalla](https://valhalla.github.io/valhalla/) truck routing (OpenStreetMap), [Open-Meteo](https://open-meteo.com/) hourly forecasts, [Photon](https://photon.komoot.io/) place search, [OpenFreeMap](https://openfreemap.org/) base map
 
