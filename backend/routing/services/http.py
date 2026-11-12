@@ -34,13 +34,14 @@ def _key(prefix: str, *parts: Any) -> str:
     return f"{prefix}:{hashlib.sha1(raw.encode()).hexdigest()}"
 
 
-def get_json(url: str, params: dict | None = None, *, ttl: int = 600, name: str = "upstream") -> Any:
+def get_json(url: str, params: dict | None = None, *, ttl: int = 600, name: str = "upstream", timeout: float | None = None) -> Any:
+    """GET JSON, cached for `ttl` seconds. `timeout` overrides the client's 25 s read timeout."""
     key = _key("get", url, params)
     hit = cache.get(key)
     if hit is not None:
         return hit
     try:
-        resp = client().get(url, params=params)
+        resp = client().get(url, params=params, timeout=timeout if timeout is not None else httpx.USE_CLIENT_DEFAULT)
     except httpx.HTTPError as exc:
         raise UpstreamError(f"{name} did not answer ({exc.__class__.__name__})") from exc
     if resp.status_code != 200:

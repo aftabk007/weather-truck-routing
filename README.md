@@ -7,7 +7,7 @@ A React + Django app that helps a truck driver pick the safest route. You enter 
 ![Philadelphia → Boston: three truck routes, risk-coloured checkpoints, corridor weather heatmap and the 0–48 h forecast timeline](docs/screenshot.jpg)
 - **Stack:** Django 5 + Django REST Framework (API), React 19 + TypeScript + Vite (UI), MapLibre GL (map), navy, white and hot-pink design
 - **Try it:** the example trips on the start screen (incl. a low-bridge demo in Durham, NC); ← / → move the forecast hour, space plays it
-- **Free data, no API keys:** [Valhalla](https://valhalla.github.io/valhalla/) truck routing (OpenStreetMap), [Open-Meteo](https://open-meteo.com/) hourly forecasts, [Photon](https://photon.komoot.io/) place search, [OpenFreeMap](https://openfreemap.org/) base map
+- **Free data, no API keys:** [Valhalla](https://valhalla.github.io/valhalla/) truck routing (OpenStreetMap), [Open-Meteo](https://open-meteo.com/) hourly forecasts, [Photon](https://photon.komoot.io/) place search (Open-Meteo geocoding as fallback), [OpenFreeMap](https://openfreemap.org/) base map
 
 ## How it works
 
@@ -38,6 +38,7 @@ React ──POST /api/heatmap (route corridor)──▶ Django: grid around the 
 | Load rules | ≥55 mph → No Travel for any load; 45–54 mph and >30,000 lb → No Travel; 35–44 mph and >40,000 lb → Severe. The rule that fired is shown as the reason. |
 | Miles per level | Each checkpoint stands for the route miles closest to it (half the gap to each neighbour), so the miles of all checkpoints add up to the route length, at any interval. |
 | Recommendation | Sorted by a key: **No Travel miles**, then the brief's order: Severe miles, High miles, average risk (mile-weighted, 0–4), travel time. No Travel comes first because the brief's list starts at Severe, but a route through No Travel weather cannot be driven, so it must never beat a route that is only Severe. Miles are rounded to 0.1 so float noise cannot decide. The UI shows which rule decided, e.g. "Severe miles: 0.0 mi vs 12.0 mi on Route B." |
+| Place search | Photon finds addresses and cities. It is a free public server and is sometimes slow, so it gets 2.5 s; after that Open-Meteo's geocoder (cities and towns, also free) answers instead. Results are limited to the US, Canada and Mexico. |
 | Forecast range | Departure must be within 5 days; checkpoints past the 8-day forecast are marked "No forecast" and shown as hatched miles. |
 | Forecast slider | 0–48 h from now, as the brief asks: it is the heatmap's forecast over the corridor, so it does not stop at arrival. The trip is shaded on it. ▶ plays the trip from departure to arrival with one clock for truck, camera, slider and weather: 1 s per hour of driving; the 30-min break and the 10-h rest stand still and fast-forward (pink pulse). Drag past arrival to see later weather. |
 | Map | The camera follows the truck while playing (drag to look around, ⌖ to come back). ⌖ turns pink when the selected route is off screen. Picking another route stops playback and starts that route from departure. |
