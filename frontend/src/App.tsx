@@ -115,6 +115,7 @@ export default function App() {
       start: Date.parse(heat.start),
       departure: Date.parse(plan!.departure),
       rest: plan!.rest_stops,
+      end: Math.min(Date.parse(route.arrival), Date.parse(heat.start) + (heat.hours - 1) * 3600_000),
     };
   }, [plan, heat, selected, lines, cum]);
 
@@ -179,6 +180,11 @@ export default function App() {
             focus={focus}
             ends={ends}
             follow={playing}
+            onHour={setHour}
+            onEnd={(h) => {
+              setPlaying(false);
+              setHour(h);
+            }}
             fitKey={fitKey}
           />
         </Suspense>

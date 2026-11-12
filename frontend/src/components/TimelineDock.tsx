@@ -25,9 +25,6 @@ type Props = {
   loading: boolean;
 };
 
-/** Real milliseconds per forecast hour while playing (48 h ≈ 17 s). */
-export const STEP_MS = 350;
-
 const dayTime = (t: number) =>
   new Date(t).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 
@@ -43,16 +40,8 @@ export function TimelineDock(p: Props) {
   const playFrom = depH != null ? Math.min(Math.max(Math.floor(depH), 0), max) : 0;
   const playTo = arrH != null ? Math.min(Math.max(Math.ceil(arrH), playFrom), max) : max;
 
-  // Play runs from departure to arrival and stops there; the rest of the 48 hours
-  // stays available by dragging (the heatmap covers the whole forecast).
-  useEffect(() => {
-    if (!p.playing) return;
-    const id = window.setInterval(() => p.setHour((h) => Math.min(h + 1, playTo)), STEP_MS);
-    return () => window.clearInterval(id);
-  }, [p.playing, playTo, p.setHour]);
-  useEffect(() => {
-    if (p.playing && p.hour >= playTo) p.setPlaying(false);
-  }, [p.playing, p.hour, playTo, p.setPlaying]);
+  // Play runs from departure to arrival and stops there (the map's frame loop is
+  // the clock; see MapView). The rest of the 48 hours stays available by dragging.
 
   const togglePlay = () => {
     if (p.playing) return p.setPlaying(false);

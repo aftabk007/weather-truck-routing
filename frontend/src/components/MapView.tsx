@@ -16,7 +16,6 @@ import { useEffect, useRef, useState } from "react";
 import type { Heatmap, Plan } from "../api";
 import type { Checkpoint } from "../api";
 import { bearingDeg, bounds, type LngLat, pointAtMile, truckAt } from "../geo";
-import { STEP_MS } from "./TimelineDock";
 import { fmtTime, HEAT, HEAT_FLOOR, type HeatVariable, levelColor } from "../risk";
 
 // MapLibre 6 finds its worker next to its own file, which a bundler moves.
@@ -79,6 +78,7 @@ export type Drive = {
   start: number; // forecast hour 0, epoch ms
   departure: number; // epoch ms
   rest: boolean; // hours-of-service pauses on
+  end: number; // arrival, or the end of the 48-h forecast if earlier (epoch ms)
 };
 
 /** Top-down truck pointing north: pink cab, white trailer. Rotated to the road's bearing. */
@@ -89,6 +89,9 @@ const TRUCK_SVG = `<svg viewBox="0 0 24 44" width="20" height="36" aria-hidden="
 </svg>`;
 
 const FOLLOW_ZOOM = 6.2; // about a state across: the weather around the truck stays readable
+const DRIVE_MS_PER_HOUR = 1000; // playback: 1 forecast hour of driving per second (~130 px/s at FOLLOW_ZOOM)
+const REST_MS_PER_HOUR = 150; // breaks and rests fast-forward: a 10-h rest takes 1.5 s
+const GLIDE_MS_PER_HOUR = 90; // paused: how fast the truck glides to a new slider hour
 const FOLLOW_IN_MS = 800; // zoom-in when following starts
 
 type Props = {
@@ -104,6 +107,8 @@ type Props = {
   focus: LngLat | null;
   ends: { from: LngLat; to: LngLat } | null;
   follow: boolean; // true while the timeline plays: keep the truck in view
+  onHour: (h: number) => void; // playback moved into a new forecast hour
+  onEnd: (h: number) => void; // playback reached arrival
   fitKey: number; // bump to zoom back out to all routes
 };
 
@@ -133,7 +138,7 @@ function riskGradient(plan: Plan, id: string): ExpressionSpecification | null {
   return expr as ExpressionSpecification;
 }
 
-export default function MapView({ plan, lines, heat, selected, onSelect, hour, heatVar, showHeat, drive, focus, ends, follow, fitKey }: Props) {
+export default function MapView({ plan, lines, heat, selected, onSelect, hour, heatVar, showHeat, drive, focus, ends, follow, fitKey, onHour, onEnd }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const truckRef = useRef<Marker | null>(null);
@@ -367,19 +372,25 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
     map.setLayoutProperty("heat", "visibility", showHeat ? "visible" : "none");
   }, [ready, hour, heatVar, showHeat]);
 
-  // Smooth driving. The slider moves in whole hours (that is when the weather
-  // changes), but the truck should drive, not jump. A frame loop keeps its own
-  // clock that chases the slider time at exactly the play speed, so while playing
-  // the truck moves continuously along the road shape (and stands still during
-  // rest stops). When paused, it glides to a new slider hour 4x faster. The
-  // camera is moved in the same frame, so it glides with the truck.
-  // Everything here is imperative (marker + camera), so React does not re-render.
+  // Playback. One clock, kept here in the map's frame loop, drives the truck,
+  // the camera and (through onHour) the slider and the weather:
+  //  - while the truck drives, 1 forecast hour takes DRIVE_MS_PER_HOUR of real time,
+  //    so it moves at a calm, steady pace along the real road shape;
+  //  - during the 30-min break and the 10-h rest the truck stands still and the
+  //    clock fast-forwards (REST_MS_PER_HOUR), so stops are short but visible;
+  //  - at arrival the clock stops and onEnd() pauses playback.
+  // When paused, the truck glides to a new slider hour instead of jumping.
+  // All of this is imperative (marker + camera): React only re-renders once an hour.
   const driveRef = useRef(drive);
   driveRef.current = drive;
   const hourRef = useRef(hour);
   hourRef.current = hour;
   const followRef = useRef(follow);
   followRef.current = follow;
+  const onHourRef = useRef(onHour);
+  onHourRef.current = onHour;
+  const onEndRef = useRef(onEnd);
+  onEndRef.current = onEnd;
 
   useEffect(() => {
     const map = mapRef.current;
@@ -388,9 +399,10 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
     let last = performance.now();
     let shown: number | null = null; // forecast time the truck is drawn at (epoch ms)
     let shownDrive: Drive | null = null;
+    let playing = false;
+    let sentHour = -1; // last hour we pushed to the slider (to tell our updates from the user's)
     let bearing = 0;
     let followFrom: { at: number; center: LngLat; zoom: number } | null = null;
-    const speed = 3600_000 / STEP_MS; // forecast ms per real ms
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
@@ -404,16 +416,45 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
         shownDrive = null;
         return;
       }
-
-      // Advance our clock toward the slider time.
       const target = d.start + hourRef.current * 3600_000;
       let t = shown ?? target;
-      const gap = target - t;
-      if (Math.abs(gap) > 6 * 3600_000) t = target; // the loop wrapped, or a long jump: snap
-      else if (gap !== 0) {
-        const step = (followRef.current ? speed : speed * 4) * dt;
-        t = Math.abs(gap) <= step ? target : t + Math.sign(gap) * step;
+      let state = truckAt(d.checkpoints, d.departure, d.rest, t).state;
+
+      if (followRef.current) {
+        // Playing: start from the slider, or jump if the user dragged the slider.
+        if (!playing || hourRef.current !== sentHour) t = target;
+        playing = true;
+        state = truckAt(d.checkpoints, d.departure, d.rest, t).state;
+        const msPerHour = state === "driving" ? DRIVE_MS_PER_HOUR : REST_MS_PER_HOUR;
+        t += (dt * 3600_000) / msPerHour;
+        if (t >= d.end) {
+          t = d.end;
+          const endHour = Math.ceil((d.end - d.start) / 3600_000 - 1e-9);
+          sentHour = endHour;
+          hourRef.current = endHour; // don't wait for React, or the next frame looks like a user drag
+          onEndRef.current(endHour);
+        } else {
+          const h = Math.floor((t - d.start) / 3600_000);
+          if (h !== sentHour) {
+            sentHour = h;
+            hourRef.current = h; // don't wait for React, or the next frame looks like a user drag
+            onHourRef.current(h);
+          }
+        }
+        state = truckAt(d.checkpoints, d.departure, d.rest, t).state;
+      } else {
+        // Paused: glide to the slider time.
+        playing = false;
+        sentHour = -1;
+        const gap = target - t;
+        if (Math.abs(gap) > 30 * 3600_000) t = target;
+        else if (gap !== 0) {
+          const step = (dt * 3600_000) / GLIDE_MS_PER_HOUR;
+          t = Math.abs(gap) <= step ? target : t + Math.sign(gap) * step;
+        }
+        state = truckAt(d.checkpoints, d.departure, d.rest, t).state;
       }
+
       const lockedOn = followRef.current && !userMoved.current;
       if (t === shown && d === shownDrive && !(lockedOn && followFrom)) return; // nothing moved
       shown = t;
@@ -431,6 +472,8 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
         truckRef.current = new Marker({ element: el, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(at).addTo(map);
       }
       truckRef.current.setLngLat(at).setRotation(bearing);
+      const el = truckRef.current.getElement();
+      if (el.dataset.state !== state) el.dataset.state = state; // CSS shows a pulse while resting
 
       // Camera: blend from where it was to the truck over FOLLOW_IN_MS, then stay locked on.
       if (!followRef.current) {
