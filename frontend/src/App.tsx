@@ -34,6 +34,7 @@ export default function App() {
   const [showHeat, setShowHeat] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [focus, setFocus] = useState<LngLat | null>(null);
+  const [fitKey, setFitKey] = useState(0);
 
   const submit = useCallback(async (req: PlanRequest) => {
     setBusy(true);
@@ -158,6 +159,8 @@ export default function App() {
             truck={truck}
             focus={focus}
             ends={ends}
+            follow={playing}
+            fitKey={fitKey}
           />
         </Suspense>
 
@@ -173,6 +176,17 @@ export default function App() {
             <span className="pill" style={{ "--c": levelColor(sel.summary.worst_level) } as CSSProperties}>
               {sel.summary.worst_level == null ? "No forecast" : LEVELS[sel.summary.worst_level]}
             </span>
+            <button
+              type="button"
+              className="fit-all"
+              onClick={() => {
+                setPlaying(false);
+                setFitKey((k) => k + 1);
+              }}
+              title="Zoom out to show all routes"
+            >
+              ⤢ All routes
+            </button>
           </div>
         )}
 

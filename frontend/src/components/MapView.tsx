@@ -80,6 +80,8 @@ type Props = {
   truck: { at: LngLat; label: string } | null;
   focus: LngLat | null;
   ends: { from: LngLat; to: LngLat } | null;
+  follow: boolean; // true while the timeline plays: keep the truck in view
+  fitKey: number; // bump to zoom back out to all routes
 };
 
 /** Paint for the heatmap circles at slider hour `h`. Only the property name
@@ -108,11 +110,13 @@ function riskGradient(plan: Plan, id: string): ExpressionSpecification | null {
   return expr as ExpressionSpecification;
 }
 
-export default function MapView({ plan, lines, heat, selected, onSelect, hour, heatVar, showHeat, truck, focus, ends }: Props) {
+export default function MapView({ plan, lines, heat, selected, onSelect, hour, heatVar, showHeat, truck, focus, ends, follow, fitKey }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const truckRef = useRef<Marker | null>(null);
   const tagRefs = useRef<Marker[]>([]);
+  const userMoved = useRef(false); // the user dragged the map while following
+  const following = useRef(false);
   const endRefs = useRef<Marker[]>([]);
   const [ready, setReady] = useState(false);
   const onSelectRef = useRef(onSelect);
@@ -200,6 +204,10 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
       map.on("click", "routes", (e: MapLayerMouseEvent) => {
         const id = e.features?.[0]?.properties?.id;
         if (id) onSelectRef.current(String(id));
+      });
+      // A drag by the user (not our own camera moves) stops the camera following the truck.
+      map.on("dragstart", () => {
+        if (following.current) userMoved.current = true;
       });
       map.on("mouseenter", "routes", () => (map.getCanvas().style.cursor = "pointer"));
       map.on("mouseleave", "routes", () => (map.getCanvas().style.cursor = ""));
@@ -354,6 +362,35 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
     truckRef.current.setLngLat(truck.at);
     truckRef.current.getElement().title = truck.label;
   }, [ready, truck]);
+
+  // Follow the truck while the timeline plays. The first frame zooms in to a
+  // regional view; after that each hour is a short linear pan, timed to the
+  // play speed, so the motion looks continuous instead of jumping.
+  const FOLLOW_ZOOM = 7;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    if (!follow) {
+      following.current = false;
+      userMoved.current = false;
+      return;
+    }
+    if (!truck || userMoved.current) return;
+    if (!following.current) {
+      following.current = true;
+      map.easeTo({ center: truck.at, zoom: Math.max(map.getZoom(), FOLLOW_ZOOM), padding: DOCK_PADDING, duration: 700 });
+    } else {
+      map.easeTo({ center: truck.at, padding: DOCK_PADDING, duration: 330, easing: (t) => t });
+    }
+  }, [ready, follow, truck]);
+
+  // "All routes": zoom back out to the whole trip.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || fitKey === 0) return;
+    const all = Object.values(lines).flat();
+    if (all.length) map.fitBounds(bounds(all), { padding: DOCK_PADDING, duration: 800 });
+  }, [ready, fitKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (ready && focus) mapRef.current?.flyTo({ center: focus, zoom: Math.max(mapRef.current.getZoom(), 8), duration: 600 });
