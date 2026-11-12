@@ -36,8 +36,7 @@ export function TruckPicker({ value, onChange, loadLb }: Props) {
   );
 
   return (
-    <div className="field truck-picker">
-      <span>Truck</span>
+    <div className="truck-picker">
       <div className="truck-types" role="radiogroup" aria-label="Truck type">
         {presets.map((p) => (
           <button

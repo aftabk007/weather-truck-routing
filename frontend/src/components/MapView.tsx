@@ -1,5 +1,6 @@
 import type { ExpressionSpecification } from "@maplibre/maplibre-gl-style-spec";
 import {
+  AttributionControl,
   type GeoJSONSource,
   Map as MapLibreMap,
   type MapLayerMouseEvent,
@@ -20,7 +21,8 @@ import { fmtTime, HEAT, HEAT_FLOOR, type HeatVariable, levelColor } from "../ris
 // Let Vite build the worker and tell MapLibre where it is.
 setWorkerUrl(mapWorkerUrl);
 
-const STYLE = "https://tiles.openfreemap.org/styles/positron";
+const STYLE = "https://tiles.openfreemap.org/styles/dark";
+const DOCK_PADDING = { top: 96, bottom: 190, left: 60, right: 70 };
 const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 const HEAT_KEY: Record<HeatVariable, string> = { risk: "r", wind: "w", rain: "p", snow: "s" };
 
@@ -35,6 +37,7 @@ type Props = {
   showHeat: boolean;
   truck: { at: LngLat; label: string } | null;
   focus: LngLat | null;
+  ends: { from: LngLat; to: LngLat } | null;
 };
 
 /** Paint for the heatmap circles at slider hour `h`. Only the property name
@@ -42,7 +45,7 @@ type Props = {
 function heatPaint(v: HeatVariable, h: number) {
   const value: ExpressionSpecification = ["coalesce", ["get", `${HEAT_KEY[v]}${h}`], -1];
   const color: ExpressionSpecification = ["interpolate", ["linear"], value, ...HEAT[v].stops.flat()] as ExpressionSpecification;
-  const opacity: ExpressionSpecification = ["case", ["<", value, HEAT_FLOOR[v]], 0, 0.55];
+  const opacity: ExpressionSpecification = ["case", ["<", value, HEAT_FLOOR[v]], 0, 0.42];
   return { color, opacity };
 }
 
@@ -63,19 +66,22 @@ function riskGradient(plan: Plan, id: string): ExpressionSpecification | null {
   return expr as ExpressionSpecification;
 }
 
-export default function MapView({ plan, lines, heat, selected, onSelect, hour, heatVar, showHeat, truck, focus }: Props) {
+export default function MapView({ plan, lines, heat, selected, onSelect, hour, heatVar, showHeat, truck, focus, ends }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const truckRef = useRef<Marker | null>(null);
+  const tagRefs = useRef<Marker[]>([]);
+  const endRefs = useRef<Marker[]>([]);
   const [ready, setReady] = useState(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
   // Create the map once, with empty sources and layers in drawing order.
   useEffect(() => {
-    const map = new MapLibreMap({ container: box.current!, style: STYLE, center: [-96, 38], zoom: 3.6 });
+    const map = new MapLibreMap({ container: box.current!, style: STYLE, center: [-96, 38], zoom: 3.6, attributionControl: false });
+    map.addControl(new AttributionControl({ compact: true }), "bottom-right");
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
-    map.addControl(new ScaleControl({ unit: "imperial" }), "bottom-right");
+    map.addControl(new ScaleControl({ unit: "imperial" }), "top-right");
     mapRef.current = map;
 
     map.on("load", () => {
@@ -84,20 +90,27 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
       map.addSource("selected", { type: "geojson", data: EMPTY, lineMetrics: true });
       map.addSource("checkpoints", { type: "geojson", data: EMPTY });
 
-      map.addLayer({ id: "heat", type: "circle", source: "heat", paint: { "circle-blur": 0.85, "circle-radius": 10 } });
+      map.addLayer({ id: "heat", type: "circle", source: "heat", paint: { "circle-blur": 1, "circle-radius": 10 } });
       map.addLayer({
         id: "routes",
         type: "line",
         source: "routes",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#868e96", "line-width": 4, "line-opacity": 0.75 },
+        paint: { "line-color": "#8ea0bd", "line-width": 3.5, "line-opacity": 0.55 },
+      });
+      map.addLayer({
+        id: "selected-glow",
+        type: "line",
+        source: "selected",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#4dabf7", "line-width": 18, "line-blur": 10, "line-opacity": 0.28 },
       });
       map.addLayer({
         id: "selected-casing",
         type: "line",
         source: "selected",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#1c2b3a", "line-width": 9 },
+        paint: { "line-color": "#020617", "line-width": 9 },
       });
       map.addLayer({
         id: "selected",
@@ -113,7 +126,7 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
         paint: {
           "circle-color": ["get", "color"],
           "circle-radius": ["case", ["get", "sel"], 6, 3.5],
-          "circle-stroke-color": "#fff",
+          "circle-stroke-color": "#0b1220",
           "circle-stroke-width": ["case", ["get", "sel"], 2, 1],
           "circle-opacity": ["case", ["get", "sel"], 1, 0.7],
         },
@@ -128,9 +141,11 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
         popup
           .setLngLat((f.geometry as GeoJSON.Point).coordinates as LngLat)
           .setHTML(
-            `<b>Route ${p.route} · mile ${Number(p.mile).toFixed(0)}</b><br/>ETA ${fmtTime(String(p.eta))}<br/>` +
-              `Wind ${p.wind} mph (gusts ${p.gust})<br/>Rain ${p.rain} in/hr · Snow ${p.snow} in/hr<br/>` +
-              `<span class="pop-level" style="background:${p.color}">${p.level}</span>` +
+            `<div class="pop-head"><b>Route ${p.route}</b> · mile ${Number(p.mile).toFixed(0)}` +
+              `<span class="pop-level" style="--c:${p.color}">${p.level}</span></div>` +
+              `<div class="pop-eta">ETA ${fmtTime(String(p.eta))}</div>` +
+              `<dl><dt>Wind</dt><dd>${p.wind} mph <small>gusts ${p.gust}</small></dd>` +
+              `<dt>Rain</dt><dd>${p.rain} in/hr</dd><dt>Snow</dt><dd>${p.snow} in/hr</dd></dl>` +
               (p.reasons ? `<div class="pop-reason">${p.reasons}</div>` : ""),
           )
           .addTo(map);
@@ -165,7 +180,7 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
     (map.getSource("routes") as GeoJSONSource).setData(routes);
     if (plan) {
       const all = Object.values(lines).flat();
-      if (all.length) map.fitBounds(bounds(all), { padding: 60, duration: 800 });
+      if (all.length) map.fitBounds(bounds(all), { padding: DOCK_PADDING, duration: 900 });
     }
   }, [ready, plan, lines]);
 
@@ -207,6 +222,42 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
     features.sort((a, b) => Number(a.properties!.sel) - Number(b.properties!.sel));
     (map.getSource("checkpoints") as GeoJSONSource).setData({ type: "FeatureCollection", features });
   }, [ready, plan, lines, selected]);
+
+  // A/B/C tags along each route (selected one highlighted), clickable.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    tagRefs.current.forEach((m) => m.remove());
+    tagRefs.current = (plan?.routes ?? []).flatMap((r, i) => {
+      const line = lines[r.id];
+      if (!line?.length) return [];
+      const at = line[Math.floor(line.length * (0.35 + 0.12 * i))];
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = `route-tag${r.id === selected ? " on" : ""}${r.id === plan?.recommended ? " best" : ""}`;
+      el.textContent = r.id;
+      el.title = `Route ${r.id}`;
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        onSelectRef.current(r.id);
+      });
+      return [new Marker({ element: el }).setLngLat(at).addTo(map)];
+    });
+  }, [ready, plan, lines, selected]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    endRefs.current.forEach((m) => m.remove());
+    endRefs.current = [];
+    if (!ends) return;
+    for (const [cls, at, title] of [["pin start", ends.from, "Origin"], ["pin end", ends.to, "Destination"]] as const) {
+      const el = document.createElement("div");
+      el.className = cls;
+      el.title = title;
+      endRefs.current.push(new Marker({ element: el }).setLngLat(at).addTo(map));
+    }
+  }, [ready, ends]);
 
   // Heatmap data: one feature per grid cell, all 49 hours of all variables as properties.
   useEffect(() => {

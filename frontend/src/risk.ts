@@ -2,9 +2,9 @@ import type { LevelName } from "./api";
 
 export const LEVELS: LevelName[] = ["Low", "Moderate", "High", "Severe", "No Travel"];
 
-/** One colour per risk level; checked for contrast on the light basemap. */
-export const LEVEL_COLORS = ["#2f9e44", "#f2b705", "#f76707", "#e03131", "#7b2cbf"];
-export const NO_DATA_COLOR = "#adb5bd";
+/** One colour per risk level, tuned to stand out on the dark map and panels. */
+export const LEVEL_COLORS = ["#40c057", "#fcc419", "#ff922b", "#fa5252", "#cc5de8"];
+export const NO_DATA_COLOR = "#5c6b80";
 
 export const levelColor = (level: number | null) => (level == null ? NO_DATA_COLOR : LEVEL_COLORS[level]);
 
@@ -22,22 +22,22 @@ export const HEAT: Record<HeatVariable, { label: string; unit: string; stops: [n
     label: "Wind",
     unit: "mph",
     stops: [
-      [0, "#2f9e44"],
-      [25, "#f2b705"],
-      [35, "#f76707"],
-      [45, "#e03131"],
-      [55, "#7b2cbf"],
+      [0, "#40c057"],
+      [25, "#fcc419"],
+      [35, "#ff922b"],
+      [45, "#fa5252"],
+      [55, "#cc5de8"],
     ],
   },
   rain: {
     label: "Rain",
     unit: "in/hr",
     stops: [
-      [0, "#a5d8ff"],
-      [0.1, "#4dabf7"],
-      [0.25, "#1c7ed6"],
-      [0.5, "#5f3dc4"],
-      [1, "#862e9c"],
+      [0, "#74c0fc"],
+      [0.1, "#339af0"],
+      [0.25, "#5c7cfa"],
+      [0.5, "#845ef7"],
+      [1, "#e64980"],
     ],
   },
   snow: {
@@ -45,10 +45,10 @@ export const HEAT: Record<HeatVariable, { label: string; unit: string; stops: [n
     unit: "in/hr",
     stops: [
       [0, "#e7f5ff"],
-      [0.5, "#a5d8ff"],
-      [1, "#74c0fc"],
-      [2, "#4263eb"],
-      [3, "#364fc7"],
+      [0.5, "#c5f6fa"],
+      [1, "#99e9f2"],
+      [2, "#66d9e8"],
+      [3, "#ffffff"],
     ],
   },
 };
@@ -59,7 +59,8 @@ export const HEAT_FLOOR: Record<HeatVariable, number> = { risk: 0.5, wind: 15, r
 export const fmtHours = (s: number) => {
   const h = Math.floor(s / 3600);
   const m = Math.round((s % 3600) / 60);
-  return m === 60 ? `${h + 1} h` : `${h} h ${String(m).padStart(2, "0")} m`;
+  if (m === 60) return `${h + 1} h`;
+  return h === 0 ? `${m} min` : `${h} h ${String(m).padStart(2, "0")} m`;
 };
 
 export const fmtTime = (iso: string | number) =>

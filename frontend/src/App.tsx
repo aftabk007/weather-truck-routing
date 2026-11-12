@@ -1,15 +1,29 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from "react";
+import { type CSSProperties, lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { api, type Heatmap, type Plan, type PlanRequest } from "./api";
-import { HeatControls } from "./components/HeatControls";
+import { Examples } from "./components/Examples";
 import { RouteCards } from "./components/RouteCards";
-import { TripForm } from "./components/TripForm";
+import { TimelineDock } from "./components/TimelineDock";
+import { DEFAULT_TRIP, TripForm, type TripValues } from "./components/TripForm";
 import { cumulativeMiles, decodePolyline, type LngLat, mileAtTime, pointAtMile } from "./geo";
-import { type HeatVariable, LEVEL_COLORS, LEVELS } from "./risk";
+import { fmtHours, type HeatVariable, LEVELS, levelColor } from "./risk";
 
 // The map library is most of the download; load it as its own file so the form shows at once.
 const MapView = lazy(() => import("./components/MapView"));
 
+function Logo() {
+  return (
+    <svg className="logo" viewBox="0 0 32 32" aria-hidden>
+      <rect width="32" height="32" rx="8" fill="#13233d" />
+      <path d="M6 23c5 0 5-9 10-9s5 7 10 7" fill="none" stroke="#4dabf7" strokeWidth="2.6" strokeLinecap="round" />
+      <circle cx="6" cy="23" r="2.4" fill="#40c057" />
+      <circle cx="26" cy="21" r="2.4" fill="#fa5252" />
+      <path d="M17 6.5a3.4 3.4 0 0 1 6.5 1.2h.4a2.3 2.3 0 0 1 0 4.6H15.6a2.6 2.6 0 0 1-.3-5.2 3.4 3.4 0 0 1 1.7-.6Z" fill="#c5d4ea" />
+    </svg>
+  );
+}
+
 export default function App() {
+  const [seed, setSeed] = useState<{ key: number; values: TripValues; auto: boolean }>({ key: 0, values: DEFAULT_TRIP, auto: false });
   const [plan, setPlan] = useState<Plan | null>(null);
   const [heat, setHeat] = useState<Heatmap | null>(null);
   const [busy, setBusy] = useState(false);
@@ -61,6 +75,10 @@ export default function App() {
     for (const [id, line] of Object.entries(lines)) out[id] = cumulativeMiles(line);
     return out;
   }, [lines]);
+  const ends = useMemo(() => {
+    const line = plan ? lines[plan.recommended] : undefined;
+    return line?.length ? { from: line[0], to: line[line.length - 1] } : null;
+  }, [plan, lines]);
 
   // Where the truck is on the selected route at the slider time.
   const truck = useMemo(() => {
@@ -79,48 +97,78 @@ export default function App() {
     return { at, label };
   }, [plan, heat, hour, selected, lines, cum]);
 
+  const sel = plan?.routes.find((r) => r.id === selected) ?? null;
+
   return (
     <div className="app">
       <aside className="panel">
-        <header>
-          <h1>Weather-Aware Truck Routing</h1>
-          <p>Three truck routes, weather at the hour the truck gets there, and the safest pick.</p>
+        <header className="brand">
+          <Logo />
+          <div>
+            <h1>Weather-Aware Truck Routing</h1>
+            <p>Three truck routes · weather at each ETA · the safest pick</p>
+          </div>
         </header>
-        <TripForm busy={busy} onSubmit={submit} />
-        {error && <div className="error">{error}</div>}
+
+        <TripForm key={seed.key} initial={seed.values} autoSubmit={seed.auto} busy={busy} onSubmit={submit} />
+
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
+
+        {busy && !plan && (
+          <div className="skeleton" aria-hidden>
+            <i />
+            <i />
+            <i />
+          </div>
+        )}
         {plan ? (
           <RouteCards plan={plan} selected={selected} onSelect={setSelected} onCheckpoint={(lng, lat) => setFocus([lng, lat])} />
         ) : (
-          <div className="empty">
-            Enter a trip and press <b>Find the safest route</b>. Weather comes from Open-Meteo, routes from Valhalla
-            (truck profile), places from Photon (OpenStreetMap).
-          </div>
+          !busy && <Examples onPick={(values) => setSeed((s) => ({ key: s.key + 1, values, auto: true }))} />
         )}
-        <footer className="legend">
-          {LEVELS.map((l, i) => (
-            <span key={l}>
-              <i style={{ background: LEVEL_COLORS[i] }} />
-              {l}
-            </span>
-          ))}
+
+        <footer className="sources">
+          Routing © Valhalla / OpenStreetMap · Weather © Open-Meteo · Places © Photon · Map © OpenFreeMap
         </footer>
       </aside>
+
       <main className="map-wrap">
         <Suspense fallback={<div className="map map-loading">Loading map…</div>}>
-        <MapView
-          plan={plan}
-          lines={lines}
-          heat={heat}
-          selected={selected}
-          onSelect={setSelected}
-          hour={hour}
-          heatVar={heatVar}
-          showHeat={showHeat}
-          truck={truck}
-          focus={focus}
-        />
+          <MapView
+            plan={plan}
+            lines={lines}
+            heat={heat}
+            selected={selected}
+            onSelect={setSelected}
+            hour={hour}
+            heatVar={heatVar}
+            showHeat={showHeat}
+            truck={truck}
+            focus={focus}
+            ends={ends}
+          />
         </Suspense>
-        <HeatControls
+
+        {plan && sel && (
+          <div className="map-chip" aria-live="polite">
+            <span className={`letter ${sel.id === plan.recommended ? "best" : ""}`}>{sel.id}</span>
+            <div>
+              <b>{sel.id === plan.recommended ? "Recommended" : `Route ${sel.id}`}</b>
+              <span>
+                {fmtHours(sel.travel_s)} · {sel.distance_mi.toFixed(0)} mi
+              </span>
+            </div>
+            <span className="pill" style={{ "--c": levelColor(sel.summary.worst_level) } as CSSProperties}>
+              {sel.summary.worst_level == null ? "No forecast" : LEVELS[sel.summary.worst_level]}
+            </span>
+          </div>
+        )}
+
+        <TimelineDock
           start={heat?.start ?? null}
           hours={heat?.hours ?? 49}
           hour={hour}
@@ -132,9 +180,16 @@ export default function App() {
           playing={playing}
           setPlaying={setPlaying}
           truckNote={truck?.label ?? null}
+          departure={plan?.departure ?? null}
+          arrival={sel?.arrival ?? null}
           loading={heatLoading}
         />
-        {busy && <div className="map-busy">Finding routes and reading the forecast…</div>}
+
+        {busy && (
+          <div className="map-busy">
+            <i className="spinner" aria-hidden /> Finding truck routes and reading the forecast…
+          </div>
+        )}
       </main>
     </div>
   );
