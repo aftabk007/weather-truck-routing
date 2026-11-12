@@ -60,16 +60,44 @@ export function pointAtMile(line: LngLat[], cum: number[], mile: number): LngLat
   return [line[lo][0] + (line[hi][0] - line[lo][0]) * t, line[lo][1] + (line[hi][1] - line[lo][1]) * t];
 }
 
-/** Route mile where the truck is at time `t`, from the checkpoint ETAs (null = not on the road). */
-export function mileAtTime(checkpoints: Checkpoint[], t: number): { mile: number; state: "before" | "driving" | "arrived" } {
-  const times = checkpoints.map((c) => Date.parse(c.eta));
-  if (t <= times[0]) return { mile: 0, state: "before" };
-  const last = checkpoints.length - 1;
-  if (t >= times[last]) return { mile: checkpoints[last].mile, state: "arrived" };
+/* Hours-of-service pauses, the same numbers as backend/routing/services/checkpoints.py:
+   drive 8 h, 30-min break, drive 3 h more (11 h), 10-h rest, repeat. */
+const DRIVE_LIMIT_H = 11;
+const BREAK_AFTER_H = 8;
+const BREAK_H = 0.5;
+const REST_H = 10;
+const SHIFT_H = DRIVE_LIMIT_H + BREAK_H + REST_H; // 21.5 h of clock time per full shift
+
+export type TruckState = "before" | "driving" | "break" | "rest" | "arrived";
+
+/** Driving hours done after `clockH` hours since departure: the inverse of the
+ * server's elapsed_hours(). Flat during the break and the rest, so the truck
+ * stands still exactly while the driver is off the road. */
+export function drivenHours(clockH: number, rest: boolean): { driven: number; state: "driving" | "break" | "rest" } {
+  if (!rest) return { driven: clockH, state: "driving" };
+  const k = Math.floor(clockH / SHIFT_H);
+  const r = clockH - k * SHIFT_H;
+  const base = k * DRIVE_LIMIT_H;
+  if (r <= BREAK_AFTER_H) return { driven: base + r, state: "driving" };
+  if (r <= BREAK_AFTER_H + BREAK_H) return { driven: base + BREAK_AFTER_H, state: "break" };
+  if (r <= DRIVE_LIMIT_H + BREAK_H) return { driven: base + r - BREAK_H, state: "driving" };
+  return { driven: base + DRIVE_LIMIT_H, state: "rest" };
+}
+
+/** Route mile and state of the truck at time `t` (epoch ms). Driving time maps
+ * to miles through the checkpoints' driving times, so speed only changes where
+ * the road really changes (city vs highway), not because of rest stops. */
+export function truckAt(cps: Checkpoint[], departureMs: number, rest: boolean, t: number): { mile: number; state: TruckState } {
+  if (t <= departureMs) return { mile: 0, state: "before" };
+  const { driven, state } = drivenHours((t - departureMs) / 3600_000, rest);
+  const ds = driven * 3600;
+  const last = cps[cps.length - 1];
+  if (ds >= last.drive_s) return { mile: last.mile, state: "arrived" };
   let i = 0;
-  while (times[i + 1] < t) i++;
-  const f = (t - times[i]) / (times[i + 1] - times[i] || 1);
-  return { mile: checkpoints[i].mile + (checkpoints[i + 1].mile - checkpoints[i].mile) * f, state: "driving" };
+  while (cps[i + 1].drive_s < ds) i++;
+  const span = cps[i + 1].drive_s - cps[i].drive_s;
+  const f = span > 0 ? (ds - cps[i].drive_s) / span : 0;
+  return { mile: cps[i].mile + (cps[i + 1].mile - cps[i].mile) * f, state };
 }
 
 /** Compass bearing (degrees, 0 = north) from a to b. */

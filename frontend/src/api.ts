@@ -23,6 +23,7 @@ export type Checkpoint = {
   lat: number;
   lon: number;
   eta: string;
+  drive_s: number; // driving time from the start, rest stops excluded
   covers_mi: number;
   level: number | null;
   level_name: LevelName | "No forecast";

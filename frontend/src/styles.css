@@ -297,3 +297,9 @@ b, strong { font-weight: 700; }
 
 .fit-all { margin-left: 4px; border: 0; background: var(--navy); color: var(--white); font-size: 12px; font-weight: 700; padding: 6px 11px; border-radius: 99px; cursor: pointer; white-space: nowrap; }
 .fit-all:hover { background: var(--pink); }
+
+/* The trip's window on the 48-hour bar (under the range input) */
+.trip-span { position: absolute; top: 6px; height: 10px; border-radius: 99px; background: rgba(255, 61, 139, 0.18); border: 1px solid rgba(255, 61, 139, 0.45); pointer-events: none; }
+.track input[type="range"] { position: relative; z-index: 1; }
+.mark { z-index: 2; }
+.mark-dot.trip { width: 14px; height: 8px; border-radius: 99px; background: rgba(255, 61, 139, 0.25); border: 1px solid rgba(255, 61, 139, 0.6); margin-left: 6px; }

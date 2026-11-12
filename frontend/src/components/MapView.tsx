@@ -15,7 +15,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
 import type { Heatmap, Plan } from "../api";
 import type { Checkpoint } from "../api";
-import { bearingDeg, bounds, type LngLat, mileAtTime, pointAtMile } from "../geo";
+import { bearingDeg, bounds, type LngLat, pointAtMile, truckAt } from "../geo";
 import { STEP_MS } from "./TimelineDock";
 import { fmtTime, HEAT, HEAT_FLOOR, type HeatVariable, levelColor } from "../risk";
 
@@ -77,6 +77,8 @@ export type Drive = {
   cum: number[]; // miles along `line`
   scale: number; // map-line miles per router mile
   start: number; // forecast hour 0, epoch ms
+  departure: number; // epoch ms
+  rest: boolean; // hours-of-service pauses on
 };
 
 /** Top-down truck pointing north: pink cab, white trailer. Rotated to the road's bearing. */
@@ -418,7 +420,7 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
       shownDrive = d;
 
       // Where on the road the truck is at time t, and which way it faces.
-      const mile = mileAtTime(d.checkpoints, t).mile * d.scale;
+      const mile = truckAt(d.checkpoints, d.departure, d.rest, t).mile * d.scale;
       const at = pointAtMile(d.line, d.cum, mile);
       const ahead = pointAtMile(d.line, d.cum, Math.min(mile + 0.4, d.cum[d.cum.length - 1]));
       if (ahead[0] !== at[0] || ahead[1] !== at[1]) bearing = bearingDeg(at, ahead);

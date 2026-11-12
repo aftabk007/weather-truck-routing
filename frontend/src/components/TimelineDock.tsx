@@ -36,11 +36,29 @@ export function TimelineDock(p: Props) {
   const max = Math.max(p.hours - 1, 1);
   const t0 = p.start ? Date.parse(p.start) : null;
 
+  // The trip inside the 48-hour forecast, in slider hours (null when out of range).
+  const hourOf = (iso: string | null) => (iso && t0 ? (Date.parse(iso) - t0) / 3600_000 : null);
+  const depH = hourOf(p.departure);
+  const arrH = hourOf(p.arrival);
+  const playFrom = depH != null ? Math.min(Math.max(Math.floor(depH), 0), max) : 0;
+  const playTo = arrH != null ? Math.min(Math.max(Math.ceil(arrH), playFrom), max) : max;
+
+  // Play runs from departure to arrival and stops there; the rest of the 48 hours
+  // stays available by dragging (the heatmap covers the whole forecast).
   useEffect(() => {
     if (!p.playing) return;
-    const id = window.setInterval(() => p.setHour((h) => (h >= max ? 0 : h + 1)), STEP_MS);
+    const id = window.setInterval(() => p.setHour((h) => Math.min(h + 1, playTo)), STEP_MS);
     return () => window.clearInterval(id);
-  }, [p.playing, max, p.setHour]);
+  }, [p.playing, playTo, p.setHour]);
+  useEffect(() => {
+    if (p.playing && p.hour >= playTo) p.setPlaying(false);
+  }, [p.playing, p.hour, playTo, p.setPlaying]);
+
+  const togglePlay = () => {
+    if (p.playing) return p.setPlaying(false);
+    if (p.hour < playFrom || p.hour >= playTo) p.setHour(playFrom); // replay the trip from departure
+    p.setPlaying(true);
+  };
 
   // Keyboard: ←/→ step an hour, space plays (when focus is not in a text field).
   useEffect(() => {
@@ -49,13 +67,13 @@ export function TimelineDock(p: Props) {
       if (!t0 || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (e.key === "ArrowRight") p.setHour((h) => Math.min(h + 1, max));
       else if (e.key === "ArrowLeft") p.setHour((h) => Math.max(h - 1, 0));
-      else if (e.key === " ") p.setPlaying(!p.playing);
+      else if (e.key === " ") togglePlay();
       else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [t0, max, p.playing, p.setHour, p.setPlaying]);
+  }, [t0, max, p.playing, p.hour, playFrom, playTo, p.setHour, p.setPlaying]); // togglePlay reads these
 
   // A tick every 6 hours, labelled with the day at midnight.
   const ticks = useMemo(() => {
@@ -90,16 +108,20 @@ export function TimelineDock(p: Props) {
         <button
           type="button"
           className="play"
-          onClick={() => p.setPlaying(!p.playing)}
+          onClick={togglePlay}
           disabled={!t0}
           aria-label={p.playing ? "Pause" : "Play"}
-          title="Play the next 48 hours (space)"
+          title="Play the trip, departure to arrival (space)"
         >
           {p.playing ? "❚❚" : "▶"}
         </button>
         <div className="dock-time">
           <strong>{p.loading ? "Loading forecast…" : t0 ? dayTime(t0 + p.hour * 3600_000) : "Forecast timeline"}</strong>
-          <span>{t0 ? `+${p.hour} h from now` : "Plan a trip to load 48 hours of weather"}</span>
+          <span>
+            {t0
+              ? `+${p.hour} h from now${p.departure && p.arrival ? ` · trip ${dayTime(Date.parse(p.departure))} → ${dayTime(Date.parse(p.arrival))}` : ""}`
+              : "Plan a trip to load 48 hours of weather"}
+          </span>
         </div>
         {p.truckNote && <div className="dock-truck">🚚 {p.truckNote}</div>}
         <div className="dock-tools">
@@ -137,6 +159,13 @@ export function TimelineDock(p: Props) {
           aria-label="Forecast hour"
           style={{ "--fill": `${(p.hour / max) * 100}%` } as CSSProperties}
         />
+        {depH != null && arrH != null && depH < max && arrH > 0 && (
+          <span
+            className="trip-span"
+            style={{ left: `${(Math.max(depH, 0) / max) * 100}%`, width: `${((Math.min(arrH, max) - Math.max(depH, 0)) / max) * 100}%` }}
+            title="Your trip"
+          />
+        )}
         {dep != null && <span className="mark dep" style={{ left: `${dep}%` }} title="Departure" />}
         {arr != null && <span className="mark arr" style={{ left: `${arr}%` }} title="Arrival (selected route)" />}
         <div className="ticks" aria-hidden>
@@ -157,7 +186,7 @@ export function TimelineDock(p: Props) {
           ))}
         </div>
         <span className="legend-marks">
-          <i className="mark-dot dep" /> departure <i className="mark-dot arr" /> arrival
+          <i className="mark-dot dep" /> departure <i className="mark-dot trip" /> trip <i className="mark-dot arr" /> arrival
         </span>
       </div>
     </section>

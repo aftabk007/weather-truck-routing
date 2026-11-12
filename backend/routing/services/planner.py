@@ -23,6 +23,7 @@ def _checkpoint_json(cp, wx, a) -> dict:
         "lat": round(cp.lat, 5),
         "lon": round(cp.lon, 5),
         "eta": cp.eta.isoformat(),
+        "drive_s": round(cp.drive_s),  # driving time from the start, rest stops excluded
         "covers_mi": round(cp.covers_mi, 2),
     }
     if wx is None:

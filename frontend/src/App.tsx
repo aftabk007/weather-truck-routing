@@ -5,7 +5,7 @@ import { RouteCards } from "./components/RouteCards";
 import { TimelineDock } from "./components/TimelineDock";
 import type { Drive } from "./components/MapView";
 import { DEFAULT_TRIP, TripForm, type TripValues } from "./components/TripForm";
-import { cumulativeMiles, decodePolyline, type LngLat, mileAtTime, pointAtMile } from "./geo";
+import { cumulativeMiles, decodePolyline, type LngLat, pointAtMile, truckAt } from "./geo";
 import { fmtHours, type HeatVariable, LEVELS, levelColor } from "./risk";
 
 // The map library is most of the download; load it as its own file so the form shows at once.
@@ -86,15 +86,17 @@ export default function App() {
     const route = plan?.routes.find((r) => r.id === selected);
     if (!route || !heat || !lines[selected]) return null;
     const t = Date.parse(heat.start) + hour * 3600_000;
-    const { mile, state } = mileAtTime(route.checkpoints, t);
+    const { mile, state } = truckAt(route.checkpoints, Date.parse(plan!.departure), plan!.rest_stops, t);
     const scale = cum[selected].at(-1)! / (route.distance_mi || 1); // map line vs router miles
     const at = pointAtMile(lines[selected], cum[selected], mile * scale);
-    const label =
-      state === "before"
-        ? `Route ${selected}: not departed yet`
-        : state === "arrived"
-          ? `Route ${selected}: arrived`
-          : `Route ${selected}: mile ${mile.toFixed(0)} of ${route.distance_mi.toFixed(0)}`;
+    const where = `mile ${mile.toFixed(0)} of ${route.distance_mi.toFixed(0)}`;
+    const label = {
+      before: `Route ${selected}: not departed yet`,
+      driving: `Route ${selected}: driving, ${where}`,
+      break: `Route ${selected}: 30-min break at ${where}`,
+      rest: `Route ${selected}: 10-h rest at ${where}`,
+      arrived: `Route ${selected}: arrived`,
+    }[state];
     return { at, label };
   }, [plan, heat, hour, selected, lines, cum]);
 
@@ -111,6 +113,8 @@ export default function App() {
       cum: cum[selected],
       scale: cum[selected].at(-1)! / (route.distance_mi || 1),
       start: Date.parse(heat.start),
+      departure: Date.parse(plan!.departure),
+      rest: plan!.rest_stops,
     };
   }, [plan, heat, selected, lines, cum]);
 
