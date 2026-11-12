@@ -219,7 +219,8 @@ b, strong { font-weight: 700; }
 .pin { width: 18px; height: 18px; border-radius: 50%; border: 4px solid var(--white); box-shadow: 0 3px 12px rgba(0, 0, 0, 0.55); }
 .pin.start { background: var(--navy); }
 .pin.end { background: var(--pink); }
-.truck { font-size: 24px; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.7)); }
+.truck { width: 20px; height: 36px; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6)); pointer-events: none; }
+.truck svg { display: block; }
 
 /* Timeline dock: a white card */
 .dock { position: absolute; left: 16px; right: 58px; bottom: 16px; display: grid; gap: 10px; padding: 14px 18px; border-radius: 22px; background: var(--white); color: var(--ink); box-shadow: var(--shadow); }

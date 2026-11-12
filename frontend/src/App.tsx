@@ -3,6 +3,7 @@ import { api, type Heatmap, type Plan, type PlanRequest } from "./api";
 import { Examples } from "./components/Examples";
 import { RouteCards } from "./components/RouteCards";
 import { TimelineDock } from "./components/TimelineDock";
+import type { Drive } from "./components/MapView";
 import { DEFAULT_TRIP, TripForm, type TripValues } from "./components/TripForm";
 import { cumulativeMiles, decodePolyline, type LngLat, mileAtTime, pointAtMile } from "./geo";
 import { fmtHours, type HeatVariable, LEVELS, levelColor } from "./risk";
@@ -99,6 +100,20 @@ export default function App() {
 
   const sel = plan?.routes.find((r) => r.id === selected) ?? null;
 
+  // Route data for the smooth truck animation on the map.
+  const drive = useMemo<Drive | null>(() => {
+    const route = plan?.routes.find((r) => r.id === selected);
+    const line = lines[selected];
+    if (!route || !heat || !line) return null;
+    return {
+      checkpoints: route.checkpoints,
+      line,
+      cum: cum[selected],
+      scale: cum[selected].at(-1)! / (route.distance_mi || 1),
+      start: Date.parse(heat.start),
+    };
+  }, [plan, heat, selected, lines, cum]);
+
   return (
     <div className="app">
       <aside className="panel">
@@ -156,7 +171,7 @@ export default function App() {
             hour={hour}
             heatVar={heatVar}
             showHeat={showHeat}
-            truck={truck}
+            drive={drive}
             focus={focus}
             ends={ends}
             follow={playing}

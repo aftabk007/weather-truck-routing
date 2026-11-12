@@ -72,6 +72,14 @@ export function mileAtTime(checkpoints: Checkpoint[], t: number): { mile: number
   return { mile: checkpoints[i].mile + (checkpoints[i + 1].mile - checkpoints[i].mile) * f, state: "driving" };
 }
 
+/** Compass bearing (degrees, 0 = north) from a to b. */
+export function bearingDeg(a: LngLat, b: LngLat): number {
+  const [lon1, lat1, lon2, lat2] = [rad(a[0]), rad(a[1]), rad(b[0]), rad(b[1])];
+  const y = Math.sin(lon2 - lon1) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
 export function bounds(points: LngLat[]): [LngLat, LngLat] {
   let minX = Infinity;
   let minY = Infinity;

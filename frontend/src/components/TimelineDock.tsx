@@ -25,6 +25,9 @@ type Props = {
   loading: boolean;
 };
 
+/** Real milliseconds per forecast hour while playing (48 h ≈ 17 s). */
+export const STEP_MS = 350;
+
 const dayTime = (t: number) =>
   new Date(t).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 
@@ -35,7 +38,7 @@ export function TimelineDock(p: Props) {
 
   useEffect(() => {
     if (!p.playing) return;
-    const id = window.setInterval(() => p.setHour((h) => (h >= max ? 0 : h + 1)), 350);
+    const id = window.setInterval(() => p.setHour((h) => (h >= max ? 0 : h + 1)), STEP_MS);
     return () => window.clearInterval(id);
   }, [p.playing, max, p.setHour]);
 

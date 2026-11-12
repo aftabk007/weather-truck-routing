@@ -14,7 +14,9 @@ import mapWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
 import type { Heatmap, Plan } from "../api";
-import { bounds, type LngLat } from "../geo";
+import type { Checkpoint } from "../api";
+import { bearingDeg, bounds, type LngLat, mileAtTime, pointAtMile } from "../geo";
+import { STEP_MS } from "./TimelineDock";
 import { fmtTime, HEAT, HEAT_FLOOR, type HeatVariable, levelColor } from "../risk";
 
 // MapLibre 6 finds its worker next to its own file, which a bundler moves.
@@ -68,6 +70,25 @@ function tintBasemap(map: MapLibreMap) {
 const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 const HEAT_KEY: Record<HeatVariable, string> = { risk: "r", wind: "w", rain: "p", snow: "s" };
 
+/** What the truck animation needs: the selected route's shape and its checkpoint ETAs. */
+export type Drive = {
+  checkpoints: Checkpoint[];
+  line: LngLat[];
+  cum: number[]; // miles along `line`
+  scale: number; // map-line miles per router mile
+  start: number; // forecast hour 0, epoch ms
+};
+
+/** Top-down truck pointing north: pink cab, white trailer. Rotated to the road's bearing. */
+const TRUCK_SVG = `<svg viewBox="0 0 24 44" width="20" height="36" aria-hidden="true">
+  <rect x="3.5" y="14" width="17" height="28" rx="3" fill="#ffffff" stroke="#0f1b3d" stroke-width="2"/>
+  <rect x="5" y="2" width="14" height="11" rx="4" fill="#ff3d8b" stroke="#0f1b3d" stroke-width="2"/>
+  <rect x="7.5" y="4.5" width="9" height="3.5" rx="1.2" fill="#0f1b3d" opacity="0.55"/>
+</svg>`;
+
+const FOLLOW_ZOOM = 6.2; // about a state across: the weather around the truck stays readable
+const FOLLOW_IN_MS = 800; // zoom-in when following starts
+
 type Props = {
   plan: Plan | null;
   lines: Record<string, LngLat[]>;
@@ -77,7 +98,7 @@ type Props = {
   hour: number;
   heatVar: HeatVariable;
   showHeat: boolean;
-  truck: { at: LngLat; label: string } | null;
+  drive: Drive | null;
   focus: LngLat | null;
   ends: { from: LngLat; to: LngLat } | null;
   follow: boolean; // true while the timeline plays: keep the truck in view
@@ -110,7 +131,7 @@ function riskGradient(plan: Plan, id: string): ExpressionSpecification | null {
   return expr as ExpressionSpecification;
 }
 
-export default function MapView({ plan, lines, heat, selected, onSelect, hour, heatVar, showHeat, truck, focus, ends, follow, fitKey }: Props) {
+export default function MapView({ plan, lines, heat, selected, onSelect, hour, heatVar, showHeat, drive, focus, ends, follow, fitKey }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const truckRef = useRef<Marker | null>(null);
@@ -344,45 +365,96 @@ export default function MapView({ plan, lines, heat, selected, onSelect, hour, h
     map.setLayoutProperty("heat", "visibility", showHeat ? "visible" : "none");
   }, [ready, hour, heatVar, showHeat]);
 
-  // Truck position at the slider time.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!ready || !map) return;
-    if (!truck) {
-      truckRef.current?.remove();
-      truckRef.current = null;
-      return;
-    }
-    if (!truckRef.current) {
-      const el = document.createElement("div");
-      el.className = "truck";
-      el.textContent = "🚚";
-      truckRef.current = new Marker({ element: el }).setLngLat(truck.at).addTo(map);
-    }
-    truckRef.current.setLngLat(truck.at);
-    truckRef.current.getElement().title = truck.label;
-  }, [ready, truck]);
+  // Smooth driving. The slider moves in whole hours (that is when the weather
+  // changes), but the truck should drive, not jump. A frame loop keeps its own
+  // clock that chases the slider time at exactly the play speed, so while playing
+  // the truck moves continuously along the road shape (and stands still during
+  // rest stops). When paused, it glides to a new slider hour 4x faster. The
+  // camera is moved in the same frame, so it glides with the truck.
+  // Everything here is imperative (marker + camera), so React does not re-render.
+  const driveRef = useRef(drive);
+  driveRef.current = drive;
+  const hourRef = useRef(hour);
+  hourRef.current = hour;
+  const followRef = useRef(follow);
+  followRef.current = follow;
 
-  // Follow the truck while the timeline plays. The first frame zooms in to a
-  // regional view; after that each hour is a short linear pan, timed to the
-  // play speed, so the motion looks continuous instead of jumping.
-  const FOLLOW_ZOOM = 7;
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    if (!follow) {
-      following.current = false;
-      userMoved.current = false;
-      return;
-    }
-    if (!truck || userMoved.current) return;
-    if (!following.current) {
+    let raf = 0;
+    let last = performance.now();
+    let shown: number | null = null; // forecast time the truck is drawn at (epoch ms)
+    let shownDrive: Drive | null = null;
+    let bearing = 0;
+    let followFrom: { at: number; center: LngLat; zoom: number } | null = null;
+    const speed = 3600_000 / STEP_MS; // forecast ms per real ms
+
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      const dt = Math.min(now - last, 100);
+      last = now;
+      const d = driveRef.current;
+      if (!d) {
+        truckRef.current?.remove();
+        truckRef.current = null;
+        shown = null;
+        shownDrive = null;
+        return;
+      }
+
+      // Advance our clock toward the slider time.
+      const target = d.start + hourRef.current * 3600_000;
+      let t = shown ?? target;
+      const gap = target - t;
+      if (Math.abs(gap) > 6 * 3600_000) t = target; // the loop wrapped, or a long jump: snap
+      else if (gap !== 0) {
+        const step = (followRef.current ? speed : speed * 4) * dt;
+        t = Math.abs(gap) <= step ? target : t + Math.sign(gap) * step;
+      }
+      const lockedOn = followRef.current && !userMoved.current;
+      if (t === shown && d === shownDrive && !(lockedOn && followFrom)) return; // nothing moved
+      shown = t;
+      shownDrive = d;
+
+      // Where on the road the truck is at time t, and which way it faces.
+      const mile = mileAtTime(d.checkpoints, t).mile * d.scale;
+      const at = pointAtMile(d.line, d.cum, mile);
+      const ahead = pointAtMile(d.line, d.cum, Math.min(mile + 0.4, d.cum[d.cum.length - 1]));
+      if (ahead[0] !== at[0] || ahead[1] !== at[1]) bearing = bearingDeg(at, ahead);
+      if (!truckRef.current) {
+        const el = document.createElement("div");
+        el.className = "truck";
+        el.innerHTML = TRUCK_SVG;
+        truckRef.current = new Marker({ element: el, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(at).addTo(map);
+      }
+      truckRef.current.setLngLat(at).setRotation(bearing);
+
+      // Camera: blend from where it was to the truck over FOLLOW_IN_MS, then stay locked on.
+      if (!followRef.current) {
+        followFrom = null;
+        following.current = false;
+        userMoved.current = false;
+        return;
+      }
+      if (userMoved.current) return;
       following.current = true;
-      map.easeTo({ center: truck.at, zoom: Math.max(map.getZoom(), FOLLOW_ZOOM), padding: DOCK_PADDING, duration: 700 });
-    } else {
-      map.easeTo({ center: truck.at, padding: DOCK_PADDING, duration: 330, easing: (t) => t });
-    }
-  }, [ready, follow, truck]);
+      if (!followFrom) {
+        const c = map.getCenter();
+        followFrom = { at: now, center: [c.lng, c.lat], zoom: map.getZoom() };
+      }
+      const k = Math.min((now - followFrom.at) / FOLLOW_IN_MS, 1);
+      const e = k < 1 ? 1 - (1 - k) ** 3 : 1; // ease-out
+      const zoomTo = Math.max(followFrom.zoom, FOLLOW_ZOOM);
+      map.jumpTo({
+        center: [followFrom.center[0] + (at[0] - followFrom.center[0]) * e, followFrom.center[1] + (at[1] - followFrom.center[1]) * e],
+        zoom: followFrom.zoom + (zoomTo - followFrom.zoom) * e,
+        padding: DOCK_PADDING,
+      });
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [ready]);
 
   // "All routes": zoom back out to the whole trip.
   useEffect(() => {
