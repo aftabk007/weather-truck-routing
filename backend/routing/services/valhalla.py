@@ -15,6 +15,7 @@ from django.conf import settings
 
 from .geo import LatLon, bearing_deg, cumulative_miles, decode_polyline, downsample, interpolate_along, offset_point
 from .http import UpstreamError, post_json
+from .roads import longest_roads, normalize_road
 
 MAX_DETOUR_RATIO = 1.6  # a detour may be at most 60% longer than the fastest route
 MAX_OVERLAP = 0.80  # a new route must share less than 80% of its miles with an existing one
@@ -28,6 +29,7 @@ class Route:
     distance_mi: float
     drive_s: float
     via: list[str] = field(default_factory=list)
+    road_miles: dict[str, float] = field(default_factory=dict)  # normalised road name -> miles driven on it
     source: str = "valhalla"  # "valhalla" or "detour"
 
 
@@ -65,7 +67,8 @@ def _route_from_trip(trip: dict, source: str) -> Route:
                 share = (leg_cum[k] - leg_cum[k - 1]) / seg if seg > 0 else 0
                 times[k] = times[k - 1] + m.get("time", 0) * share
             for name in m.get("street_names", []) or []:
-                names[name] = names.get(name, 0.0) + m.get("length", 0.0)
+                road = normalize_road(name)
+                names[road] = names.get(road, 0.0) + m.get("length", 0.0)
         cum_s.extend(times[1:] if offset else times)
     cum_mi = cumulative_miles(points)
     return Route(
@@ -74,17 +77,10 @@ def _route_from_trip(trip: dict, source: str) -> Route:
         cum_s=cum_s,
         distance_mi=cum_mi[-1],
         drive_s=cum_s[-1],
-        via=_main_roads(names),
+        via=longest_roads(names),
+        road_miles=names,
         source=source,
     )
-
-
-def _main_roads(names: dict[str, float], top: int = 2) -> list[str]:
-    def is_highway(n: str) -> bool:
-        return n.startswith(("I-", "I ", "US ", "US-")) or "Interstate" in n
-
-    ranked = sorted(names.items(), key=lambda kv: (not is_highway(kv[0]), -kv[1]))
-    return [n for n, _ in ranked[:top]]
 
 
 def _cells(route: Route, step_mi: float = 0.5) -> set[tuple[int, int]]:

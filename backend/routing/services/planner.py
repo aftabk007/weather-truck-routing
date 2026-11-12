@@ -9,6 +9,7 @@ from .checkpoints import elapsed_hours, sample_checkpoints
 from .geo import LatLon, downsample, encode_polyline
 from .ranking import RouteSummary, explain, rank_routes
 from .risk import Level, assess
+from .roads import distinct_vias
 from .trucks import TruckSpec
 from .valhalla import Route, truck_routes
 from .weather import cell_of, forecasts
@@ -69,6 +70,9 @@ def plan_trip(
     rest_stops: bool = True,
 ) -> dict:
     routes: list[Route] = truck_routes(origin, destination, truck.costing_options(load_lb))
+    # Label each route by the roads that set it apart, not the highway they all share.
+    for route, via in zip(routes, distinct_vias([r.road_miles for r in routes])):
+        route.via = via
 
     sampled = {
         rid: sample_checkpoints(r.points, r.cum_mi, r.cum_s, interval_mi, departure, rest_stops)
