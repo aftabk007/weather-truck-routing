@@ -53,7 +53,8 @@ export default function App() {
         .then((h) => {
           setHeat(h);
           // Start the slider at departure time, if it is within the 48 hours.
-          const offset = Math.round((Date.parse(p.departure) - Date.parse(h.start)) / 3600_000);
+          // Round down, so the truck starts at the origin (not part-way into the trip).
+          const offset = Math.floor((Date.parse(p.departure) - Date.parse(h.start)) / 3600_000);
           setHour(Math.min(Math.max(offset, 0), h.hours - 1));
         })
         .catch((e: Error) => setError(`Heatmap: ${e.message}`))
@@ -105,7 +106,7 @@ export default function App() {
   // Slider hour of the departure (clamped to the 48-h forecast).
   const depHour = useMemo(() => {
     if (!plan || !heat) return 0;
-    const h = Math.round((Date.parse(plan.departure) - Date.parse(heat.start)) / 3600_000);
+    const h = Math.floor((Date.parse(plan.departure) - Date.parse(heat.start)) / 3600_000);
     return Math.min(Math.max(h, 0), heat.hours - 1);
   }, [plan, heat]);
 
