@@ -1,3 +1,5 @@
+from dataclasses import asdict
+
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -8,6 +10,7 @@ from .services import geocode
 from .services.heatmap import corridor_heatmap
 from .services.http import UpstreamError
 from .services.planner import plan_trip
+from .services.trucks import DEFAULT_TYPE, PRESETS, spec_from_request
 
 
 def _upstream_failed(exc: UpstreamError) -> Response:
@@ -17,6 +20,12 @@ def _upstream_failed(exc: UpstreamError) -> Response:
 @api_view(["GET"])
 def health(request: Request) -> Response:
     return Response({"ok": True})
+
+
+@api_view(["GET"])
+def trucks_view(request: Request) -> Response:
+    """Truck presets (single source of truth for the form)."""
+    return Response({"default": DEFAULT_TYPE, "presets": [asdict(p) for p in PRESETS.values()]})
 
 
 @api_view(["GET"])
@@ -42,6 +51,7 @@ def plan_view(request: Request) -> Response:
             departure=d["departure"],
             load_lb=d["load_lb"],
             interval_mi=d["interval_mi"],
+            truck=spec_from_request(d.get("truck")),
             rest_stops=d["rest_stops"],
         )
     except UpstreamError as exc:

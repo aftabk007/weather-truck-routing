@@ -94,3 +94,18 @@ button, input, select { font: inherit; color: inherit; }
   .map-wrap { min-height: 70vh; }
 }
 .map-loading { display: grid; place-items: center; color: var(--muted); }
+
+.truck-picker { gap: 6px; }
+.truck-types { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.truck-types button { display: grid; justify-items: center; gap: 1px; padding: 5px 2px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; font-size: 11px; color: var(--ink); }
+.truck-types button i { font-style: normal; font-size: 17px; line-height: 1.1; }
+.truck-types button.on { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.truck-dims { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink); }
+.link { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 12px; padding: 0; white-space: nowrap; }
+.truck-edit { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mini { display: flex; flex-direction: column-reverse; gap: 2px; font-size: 10px; color: var(--muted); }
+.mini input { width: 100%; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; color: var(--ink); }
+.gross { font-size: 11px; color: var(--muted); }
+.gross.warn { color: #c92a2a; }
+.muted { color: var(--muted); font-size: 12px; }
+.truck-line { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4; }

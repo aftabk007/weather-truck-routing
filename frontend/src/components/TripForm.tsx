@@ -1,6 +1,7 @@
 import { useState } from "react";
-import type { Place, PlanRequest } from "../api";
+import type { Place, PlanRequest, TruckChoice } from "../api";
 import { PlaceInput } from "./PlaceInput";
+import { TruckPicker } from "./TruckPicker";
 
 const DALLAS: Place = { label: "Dallas, Texas, US", lat: 32.7767, lon: -96.797 };
 const MEMPHIS: Place = { label: "Memphis, Tennessee, US", lat: 35.1495, lon: -90.049 };
@@ -22,6 +23,7 @@ export function TripForm({ busy, onSubmit }: Props) {
   const [load, setLoad] = useState(42000);
   const [intervalMi, setIntervalMi] = useState<10 | 25 | 50>(25);
   const [rest, setRest] = useState(true);
+  const [truck, setTruck] = useState<TruckChoice>({ type: "dry_van" });
 
   const ready = origin && destination && departure && load >= 0;
 
@@ -38,6 +40,7 @@ export function TripForm({ busy, onSubmit }: Props) {
           load_lb: load,
           interval_mi: intervalMi,
           rest_stops: rest,
+          truck,
         });
       }}
     >
@@ -73,6 +76,8 @@ export function TripForm({ busy, onSubmit }: Props) {
           />
         </label>
       </div>
+
+      <TruckPicker value={truck} onChange={setTruck} loadLb={load} />
 
       <div className="row">
         <div className="field">

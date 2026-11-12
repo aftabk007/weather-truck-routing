@@ -9,6 +9,7 @@ from .checkpoints import elapsed_hours, sample_checkpoints
 from .geo import LatLon, downsample, encode_polyline
 from .ranking import RouteSummary, explain, rank_routes
 from .risk import Level, assess
+from .trucks import TruckSpec
 from .valhalla import Route, truck_routes
 from .weather import cell_of, forecasts
 
@@ -63,9 +64,10 @@ def plan_trip(
     departure: datetime,
     load_lb: float,
     interval_mi: int,
+    truck: TruckSpec,
     rest_stops: bool = True,
 ) -> dict:
-    routes: list[Route] = truck_routes(origin, destination, load_lb)
+    routes: list[Route] = truck_routes(origin, destination, truck.costing_options(load_lb))
 
     sampled = {
         rid: sample_checkpoints(r.points, r.cum_mi, r.cum_s, interval_mi, departure, rest_stops)
@@ -116,6 +118,7 @@ def plan_trip(
     return {
         "departure": departure.isoformat(),
         "load_lb": load_lb,
+        "truck": truck.as_json(load_lb),
         "interval_mi": interval_mi,
         "rest_stops": rest_stops,
         "routes": out_routes,

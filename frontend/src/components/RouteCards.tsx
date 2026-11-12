@@ -1,5 +1,6 @@
 import type { Plan, RoutePlan } from "../api";
 import { fmtHours, fmtTime, LEVEL_COLORS, LEVELS, levelColor } from "../risk";
+import { feetInches } from "./TruckPicker";
 
 type Props = {
   plan: Plan;
@@ -37,6 +38,11 @@ export function RouteCards({ plan, selected, onSelect, onCheckpoint }: Props) {
     <section className="results">
       <p className="reason">
         <strong>Recommended: Route {plan.recommended}.</strong> {plan.reason}
+      </p>
+      <p className="truck-line">
+        Routed for a <b>{plan.truck.label.toLowerCase()}</b>: {feetInches(plan.truck.height_ft)} high,{" "}
+        {feetInches(plan.truck.width_ft)} wide, {plan.truck.length_ft} ft, {plan.truck.gross_lb.toLocaleString()} lb gross
+        {plan.truck.hazmat ? ", hazmat" : ""}. Roads with lower bridges or tighter limits in OpenStreetMap are avoided.
       </p>
       {routes.map((r) => {
         const m = r.summary.miles_by_level;

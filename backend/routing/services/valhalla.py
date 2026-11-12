@@ -16,7 +16,6 @@ from django.conf import settings
 from .geo import LatLon, bearing_deg, cumulative_miles, decode_polyline, downsample, interpolate_along, offset_point
 from .http import UpstreamError, post_json
 
-LB_PER_METRIC_TON = 2204.62
 MAX_DETOUR_RATIO = 1.6  # a detour may be at most 60% longer than the fastest route
 MAX_OVERLAP = 0.80  # a new route must share less than 80% of its miles with an existing one
 
@@ -32,11 +31,11 @@ class Route:
     source: str = "valhalla"  # "valhalla" or "detour"
 
 
-def _request(locations: list[dict], load_lb: float, alternates: int) -> dict:
+def _request(locations: list[dict], truck: dict, alternates: int) -> dict:
     body = {
         "locations": locations,
         "costing": "truck",
-        "costing_options": {"truck": {"weight": round(load_lb / LB_PER_METRIC_TON, 2)}},
+        "costing_options": {"truck": truck},
         "units": "miles",
         "directions_type": "maneuvers",
         "alternates": alternates,
@@ -124,10 +123,12 @@ def _detour_points(fastest: Route) -> list[LatLon]:
     return out
 
 
-def truck_routes(origin: LatLon, destination: LatLon, load_lb: float, want: int = 3) -> list[Route]:
+def truck_routes(origin: LatLon, destination: LatLon, truck: dict, want: int = 3) -> list[Route]:
+    """Up to `want` routes for a truck described by Valhalla costing options
+    (see trucks.TruckSpec.costing_options)."""
     start = {"lat": origin[0], "lon": origin[1]}
     end = {"lat": destination[0], "lon": destination[1]}
-    data = _request([start, end], load_lb, alternates=want - 1)
+    data = _request([start, end], truck, alternates=want - 1)
     trips = [data["trip"]] + [a["trip"] for a in data.get("alternates", []) if "trip" in a]
     routes = [_route_from_trip(t, "valhalla") for t in trips]
     routes.sort(key=lambda r: r.drive_s)
@@ -143,7 +144,7 @@ def truck_routes(origin: LatLon, destination: LatLon, load_lb: float, want: int 
         with ThreadPoolExecutor(max_workers=2) as pool:
             # Two side points at a time, so we stop asking once we have enough.
             for i in range(0, len(candidates), 2):
-                for candidate in pool.map(lambda p: _via_route(start, p, end, load_lb), candidates[i : i + 2]):
+                for candidate in pool.map(lambda p: _via_route(start, p, end, truck), candidates[i : i + 2]):
                     if candidate and len(chosen) < want and _is_distinct(candidate, chosen, fastest.distance_mi):
                         chosen.append(candidate)
                 if len(chosen) >= want:
@@ -152,18 +153,18 @@ def truck_routes(origin: LatLon, destination: LatLon, load_lb: float, want: int 
     return sorted(chosen, key=lambda r: r.drive_s)[:want]
 
 
-def _via_route(start: dict, p: LatLon, end: dict, load_lb: float) -> Route | None:
+def _via_route(start: dict, p: LatLon, end: dict, truck: dict) -> Route | None:
     """Route that passes a side point. The public server limits multi-stop
     requests to 1,500 km, so long trips are routed as two halves and joined."""
     via = {"lat": p[0], "lon": p[1], "type": "through", "radius": 25000}
     try:
-        return _route_from_trip(_request([start, via, end], load_lb, alternates=0)["trip"], "detour")
+        return _route_from_trip(_request([start, via, end], truck, alternates=0)["trip"], "detour")
     except UpstreamError as exc:
         if "max distance" not in str(exc):
             return None  # e.g. no road near the side point; the next one may work
     try:
-        first = _request([start, via], load_lb, alternates=0)["trip"]
-        second = _request([{"lat": p[0], "lon": p[1], "radius": 25000}, end], load_lb, alternates=0)["trip"]
+        first = _request([start, via], truck, alternates=0)["trip"]
+        second = _request([{"lat": p[0], "lon": p[1], "radius": 25000}, end], truck, alternates=0)["trip"]
     except UpstreamError:
         return None
     return _route_from_trip({"legs": first["legs"] + second["legs"]}, "detour")

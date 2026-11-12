@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, timezone
 
 from rest_framework import serializers
 
+from .services.trucks import PRESETS
+
 MAX_DAYS_AHEAD = 5  # forecasts reach 8 days; long trips with rest stops need the margin
 
 
@@ -11,12 +13,25 @@ class PointSerializer(serializers.Serializer):
     label = serializers.CharField(required=False, allow_blank=True, max_length=200)
 
 
+class TruckSerializer(serializers.Serializer):
+    """Truck type plus optional size changes; missing values come from the preset."""
+
+    type = serializers.ChoiceField(choices=list(PRESETS), default="dry_van")
+    height_ft = serializers.FloatField(min_value=6, max_value=16, required=False)
+    width_ft = serializers.FloatField(min_value=6, max_value=12, required=False)
+    length_ft = serializers.FloatField(min_value=15, max_value=110, required=False)
+    empty_lb = serializers.FloatField(min_value=2_000, max_value=60_000, required=False)
+    axle_count = serializers.IntegerField(min_value=2, max_value=9, required=False)
+    hazmat = serializers.BooleanField(required=False)
+
+
 class PlanRequestSerializer(serializers.Serializer):
     origin = PointSerializer()
     destination = PointSerializer()
     departure = serializers.DateTimeField()
     load_lb = serializers.FloatField(min_value=0, max_value=200_000)
     interval_mi = serializers.ChoiceField(choices=[10, 25, 50], default=25)
+    truck = TruckSerializer(required=False)
     rest_stops = serializers.BooleanField(default=True)
 
     def validate_departure(self, value: datetime) -> datetime:

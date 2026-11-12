@@ -1,5 +1,20 @@
 export type Place = { label: string; lat: number; lon: number };
 
+export type TruckType = "dry_van" | "reefer" | "flatbed" | "box_truck" | "tanker";
+
+export type TruckSpec = {
+  type: TruckType;
+  label: string;
+  height_ft: number;
+  width_ft: number;
+  length_ft: number;
+  empty_lb: number;
+  axle_count: number;
+  hazmat: boolean;
+};
+
+export type TruckChoice = { type: TruckType } & Partial<Omit<TruckSpec, "type" | "label">>;
+
 export type LevelName = "Low" | "Moderate" | "High" | "Severe" | "No Travel";
 
 export type Checkpoint = {
@@ -41,6 +56,7 @@ export type RoutePlan = {
 export type Plan = {
   departure: string;
   load_lb: number;
+  truck: TruckSpec & { gross_lb: number; over_federal_limit: boolean };
   interval_mi: number;
   rest_stops: boolean;
   routes: RoutePlan[];
@@ -67,6 +83,7 @@ export type PlanRequest = {
   load_lb: number;
   interval_mi: 10 | 25 | 50;
   rest_stops: boolean;
+  truck: TruckChoice;
 };
 
 async function call<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
@@ -84,6 +101,7 @@ async function call<T>(path: string, init?: RequestInit, signal?: AbortSignal): 
 }
 
 export const api = {
+  trucks: () => call<{ default: TruckType; presets: TruckSpec[] }>("trucks"),
   geocode: (q: string, signal?: AbortSignal) =>
     call<{ results: Place[] }>(`geocode?q=${encodeURIComponent(q)}`, undefined, signal).then((r) => r.results),
   plan: (req: PlanRequest) => call<Plan>("plan", { method: "POST", body: JSON.stringify(req) }),
